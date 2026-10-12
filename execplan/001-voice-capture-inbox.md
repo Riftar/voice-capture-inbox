@@ -13,15 +13,20 @@ The prototype runs locally on a single machine. It is not multi-user, not intern
 ## Progress
 
 - [x] (2026-10-13 00:06 UTC+8) ExecPlan v1 authored; committed as execplan/001-voice-capture-inbox.md.
-- [ ] Milestone 1: local web UI with hold-button recording; upload endpoint stub; SQLite store.
-- [ ] Milestone 2: ASR via Gemini; graceful degradation without API key.
-- [ ] Milestone 3: classification (heuristic baseline + Gemini structured output).
-- [ ] Milestone 4: end-to-end test with a real browser; README quickstart; CI for unit tests.
-- [ ] Final: Outcomes & Retrospective entry; promote-or-discard decision recorded.
+- [x] (2026-10-13 00:45 UTC+8) Milestone 1: web UI with hold-button recording; upload endpoint; SQLite store.
+- [x] (2026-10-13 00:45 UTC+8) Milestone 2: ASR via Gemini; graceful degradation without API key.
+- [x] (2026-10-13 00:45 UTC+8) Milestone 3: classification (heuristic baseline + Gemini with fallback).
+- [x] (2026-10-13 00:45 UTC+8) Milestone 4: unit tests (18) + e2e with real headless Chromium (1); README quickstart; CI workflow. Full suite 19/19 green; live server smoke-tested.
+- [ ] Final: promote-or-discard decision after real-phone latency testing by the owner.
 
 ## Surprises & Discoveries
 
-(None yet.)
+- Observation: installing pytest-playwright silently changed the test regime for ALL tests — its bundled anyio plugin runs every test inside a live event loop, so four tests calling asyncio.run() failed with "cannot be called from a running event loop" even though they had passed before.
+  Evidence: test run went from 18 passed to 4 failed with RuntimeError after the plugin install; fixed with a thread-based run_coro() helper that owns its loop.
+- Observation: the heuristic noise pattern initially missed "test one two" (only bare "test"/"one two" matched).
+  Evidence: test_heuristic_all_four_labels[test one two-noise] failed, returned 'idea'; fixed by allowing repeated filler words after the trigger word.
+- Observation: the page's upload() lives inside an IIFE closure, invisible to page.evaluate — the first e2e draft re-implemented the fetch instead of driving the page's real path, so no card ever rendered.
+  Evidence: e2e failed with "element(s) not found"; fixed by exposing window.__upload for tests (one line, no behavior change).
 
 ## Decision Log
 
@@ -40,6 +45,14 @@ The prototype runs locally on a single machine. It is not multi-user, not intern
 - Decision: Audio is stored as files under data/audio/ with metadata in SQLite; the database file is disposable.
   Rationale: keeps blobs out of the database, makes "reset everything" a single rm of data/, and keeps the store module trivially testable.
   Date/Author: 2026-10-12 / Richard.
+
+- Decision: The e2e test drives the page's real upload path via a one-line window.__upload exposure instead of re-implementing the fetch.
+  Rationale: the test must exercise the code a real capture runs; a parallel implementation would silently drift and test nothing.
+  Date/Author: 2026-10-13 / Richard.
+
+- Decision: Async unit tests use a thread-based run_coro() helper rather than pytest-asyncio.
+  Rationale: pytest-playwright (needed for e2e) installs anyio's plugin, which breaks asyncio.run() inside tests; a worker thread with its own loop is dependency-free and works under both regimes.
+  Date/Author: 2026-10-13 / Richard.
 
 ## Context and Orientation
 
@@ -187,4 +200,6 @@ SQLite schema:
 
 ## Outcomes & Retrospective
 
-(To be written at completion.)
+2026-10-13: All four milestones implemented and verified. 19/19 tests green (18 unit keyless + 1 e2e with real headless Chromium driving the real server). Live server smoke-tested: page serves, upload stores audio + metadata, keyless path returns status "unprocessed" with an inline note exactly as specified. What remains: real-phone testing over a real network (the "does it feel instant" question is a latency question, not a correctness one — tests cannot answer it), HTTPS/auth before any non-localhost exposure (mic permission requires a secure context on phones), and the promote-or-discard decision after that. Known debts: FastAPI on_event("startup") is deprecated (should migrate to lifespan); the heuristic classifier defaults unmatched text to "idea" (fine as fallback, weak as primary); no upload-progress feedback for long captures on slow links.
+
+Revision note 2026-10-13: updated Progress, Surprises & Discoveries, Decision Log, and Outcomes to reflect completed implementation; no scope changes.
